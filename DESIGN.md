@@ -38,7 +38,7 @@ MinIO's policy parser (and its lifecycle parser) ignore unknown JSON keys. A mis
 
 1. **Ports:** two free ports (API and console). If MinIO reports `port is already in use`, it retries with new ones, up to 5 attempts.
 2. **Start:**
-   - the drives under `<state>/data`: one directory, or `drive{1...N}` (MinIO's ellipsis) for one erasure set;
+   - the drives under `<state>/data`: one directory, or `drive{1...N}` (MinIO's ellipsis) for one erasure set. In erasure mode MinIO refuses drives on the root filesystem ("drive not found, will be retried"), where a CI runner's sandbox is, so `MINIO_CI_CD=on` is set with several drives;
    - `--certs-dir <state>/certs`, always. Without it MinIO reads `~/.minio/certs`. Under TLS that dir holds `public.crt`, `private.key` and `CAs/`;
    - the environment: the caller's, minus every `MINIO_*`, `MC_*` and `AWS_*` variable (a sourced env file sets them), plus root credentials, `MINIO_SITE_REGION`, `MINIO_UPDATE=off`, `HOME=<state>`, the webhook target and `server_env`.
 3. **Readiness:** `GET /minio/health/ready` returns 200 (over TLS with the test CA). Two caveats:

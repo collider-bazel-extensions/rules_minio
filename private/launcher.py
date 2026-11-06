@@ -826,6 +826,11 @@ def serve(args):
             extra_env = {"MINIO_ROOT_USER": args.root_user, "MINIO_ROOT_PASSWORD": args.root_password,
                          "MINIO_SITE_REGION": args.region, "MINIO_UPDATE": "off",
                          "HOME": args.state_dir}
+            if args.drives > 1:
+                # In erasure mode MinIO refuses drives on the root filesystem
+                # ("drive not found, will be retried"): a CI runner's sandbox
+                # is there. MINIO_CI_CD lifts that check.
+                extra_env["MINIO_CI_CD"] = "on"
             if args.events:
                 sink = EventSink(os.path.join(args.state_dir, "events.jsonl"))
                 extra_env.update(sink.env())
