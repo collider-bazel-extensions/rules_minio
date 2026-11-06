@@ -1,0 +1,98 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  hermetic:
+    # minio_policy / minio_lifecycle checks, the hermetic server /
+    # minio_test suite, install manifests, the image, analysis tests and the
+    # conda pins. No container runtime needed; MinIO comes from the pinned
+    # conda-forge packages.
+    name: bazel test (ubuntu-latest, hermetic)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-hermetic
+          repository-cache: true
+
+      - name: Verify NO host minio or mc on PATH
+        run: |
+          for b in minio mc; do
+            if command -v "$b" >/dev/null 2>&1; then
+              echo "FAIL: $b found at $(command -v "$b"); the hermetic toolchain test would be meaningless" >&2
+              exit 1
+            fi
+          done
+
+      # `bazel build //...` would download every platform's conda packages
+      # (the per-platform toolchain targets); target paths instead.
+      - name: bazel build
+        run: bazel build //:defs //private/... //toolchain:current //image:minio_linux_amd64 //tests/... //tests/install_smoke:smoke_test
+
+      - name: bazel test (network blocked in the sandbox)
+        run: bazel test //tests/... --test_output=errors --sandbox_default_allow_network=false
+
+      - name: A policy with a typo fails the build
+        run: |
+          set -uo pipefail
+          if out=$(bazel build //tests/testdata:typo_policy 2>&1); then
+            echo "FAIL: //tests/testdata:typo_policy built" >&2; exit 1
+          fi
+          grep -q "Statement\[0\].Conditon: unknown field (did you mean 'Condition'?)" <<<"$out" \
+            || { echo "$out" >&2; echo "FAIL: typo not named" >&2; exit 1; }
+
+      - name: No minio processes left behind
+        if: always()
+        run: |
+          if pgrep -x minio; then echo "FAIL: minio processes left running" >&2; exit 1; fi
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazel-testlogs-hermetic
+          path: bazel-testlogs/
+          if-no-files-found: ignore
+
+  install_smoke:
+    # kind with the rules_minio image loaded + minio_install in namespace
+    # `storage`; provisioning, access through the Service from other pods,
+    # and a second install checked.
+    name: install smoke (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          disk-cache: ${{ github.workflow }}-install-smoke
+          repository-cache: true
+
+      - name: Verify Docker is available
+        run: docker version
+
+      - name: bazel test //tests/install_smoke:smoke_test
+        run: bazel test //tests/install_smoke:smoke_test --test_output=streamed --test_timeout=1500
+
+      - name: No kind clusters left behind
+        if: always()
+        run: |
+          # rules_kind deletes its cluster even when the test fails.
+          left=$(docker ps -a --filter label=io.x-k8s.kind.cluster --format '{{.Names}}')
+          if [[ -n "$left" ]]; then echo "FAIL: kind node containers left: $left" >&2; exit 1; fi
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bazel-testlogs-install-smoke
+          path: bazel-testlogs/
+          if-no-files-found: ignore

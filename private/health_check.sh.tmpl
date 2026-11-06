@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# minio_health_check — exits 0 iff the paired minio_server has written its
+# env file (it does so only once the server is ready and provisioned).
+set -euo pipefail
+
+env_file="${TEST_TMPDIR:-${TMPDIR:-/tmp}}/__ENV_FILE_NAME__"
+if [[ -f "$env_file" ]]; then
+  exit 0
+fi
+echo "[minio_health_check] env file not yet present: $env_file" >&2
+exit 1

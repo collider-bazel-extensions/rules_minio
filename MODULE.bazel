@@ -1,0 +1,63 @@
+"""rules_minio — hermetic MinIO primitives for Bazel.
+
+Three families in one repo:
+
+  Policies (build time):
+    minio_policy           — IAM or bucket policy documents; a strict
+                             field check (typos MinIO silently drops), then
+                             MinIO itself loads them, as a validation action
+    minio_lifecycle        — bucket lifecycle configuration, checked the same way
+
+  Hermetic server (test time):
+    minio_server           — long-running MinIO on a free port, with buckets,
+                             policies, users and seed objects; writes
+                             $TEST_TMPDIR/<name>.env once ready
+    minio_health_check     — pairs with minio_server
+    minio_test             — sh_test macro: auto-launched server
+
+  Cluster install (kind / production-shaped):
+    minio_image            — an image from the same pinned binaries
+    minio_install / minio_install_health_check — Deployment + Service,
+                             buckets, policies and users provisioned
+
+Pinned: MinIO RELEASE.2025-10-15T17-29-55Z, mc RELEASE.2025-08-13T08-35-41Z
+(conda-forge).
+"""
+
+module(
+    name = "rules_minio",
+    version = "0.1.0",
+)
+
+bazel_dep(name = "bazel_skylib", version = "1.8.2")
+bazel_dep(name = "platforms", version = "1.0.0")
+
+# rules_shell is part of the public surface — minio_test is an sh_test
+# macro. Bazel 8+ removed `native.sh_test`.
+bazel_dep(name = "rules_shell", version = "0.8.0")
+
+# Public binary toolchain. Per-platform repos (minio_<ver>_<plat>) come
+# from the `minio` extension, which only honours the root module's tags
+# (and uses the pinned default without one).
+minio = use_extension("//:extensions.bzl", "minio")
+use_repo(
+    minio,
+    "minio_2025_10_15_darwin_amd64",
+    "minio_2025_10_15_darwin_arm64",
+    "minio_2025_10_15_linux_amd64",
+    "minio_2025_10_15_linux_arm64",
+    "minio_loader_linux_amd64",
+    "minio_loader_linux_arm64",
+)
+register_toolchains("@rules_minio//toolchain:all")
+
+# ---- dev-only: the kind install smoke + rules_itest compositions ------------
+
+bazel_dep(name = "rules_itest", version = "0.0.52", dev_dependency = True)
+
+bazel_dep(name = "rules_kind", version = "0.3.1", dev_dependency = True)
+git_override(
+    module_name = "rules_kind",
+    remote = "https://github.com/collider-bazel-extensions/rules_kind",
+    commit = "2640f42ebcb9a6155094b3fc515f5c476bd7b5b8",  # v0.3.1
+)

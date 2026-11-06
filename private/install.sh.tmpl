@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# minio_install / minio_install_health_check wrapper: resolves runfiles,
+# execs the launcher. KUBECONFIG (and KUBECTL, else kubectl on PATH) come
+# from the environment, e.g. rules_kind's env file.
+set -euo pipefail
+
+if [[ -z "${RUNFILES_DIR:-}" ]]; then
+  if [[ -n "${TEST_SRCDIR:-}" ]]; then RUNFILES_DIR="$TEST_SRCDIR"
+  elif [[ -d "${0}.runfiles" ]]; then RUNFILES_DIR="${0}.runfiles"
+  fi
+  : "${RUNFILES_DIR:?minio_install: no runfiles found; run it with bazel run / bazel test}"
+  export RUNFILES_DIR
+fi
+
+resolve() {
+  local p="$1"
+  for c in "${RUNFILES_DIR}/_main/${p}" "${RUNFILES_DIR}/${p}" "${RUNFILES_DIR}/${p#../}"; do
+    [[ -e "$c" ]] && { printf '%s\n' "$c"; return; }
+  done
+  echo "minio_install: not in runfiles: ${p}" >&2
+  exit 1
+}
+
+launcher="$(resolve '__LAUNCHER__')"
+opts=()
+__FILES__
+
+exec python3 "$launcher" __MODE__ ${opts[@]+"${opts[@]}"} __OPTS__ "$@"

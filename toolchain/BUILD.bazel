@@ -1,0 +1,92 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+load(":toolchain.bzl", "current_minio_toolchain", "minio_toolchain")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "BUILD.bazel",
+    "toolchain.bzl",
+])
+
+toolchain_type(name = "minio")
+
+# The resolved binaries + libraries for the target platform, usable as `data`.
+current_minio_toolchain(name = "current")
+
+# Per-platform toolchains. Each `minio_<ver>_<plat>` repo (created by the
+# module extension) holds one platform's conda-forge packages. linux_arm64
+# has no 2025-10-15 server build: its targets fail with that message.
+
+minio_toolchain(
+    name    = "minio_linux_amd64_impl",
+    version = "2025-10-15",
+    server  = "@minio_2025_10_15_linux_amd64//:minio",
+    mc      = "@minio_2025_10_15_linux_amd64//:mc",
+    openssl = "@minio_2025_10_15_linux_amd64//:openssl",
+    libs    = "@minio_2025_10_15_linux_amd64//:libs",
+)
+
+toolchain(
+    name                   = "minio_linux_amd64",
+    toolchain_type         = ":minio",
+    exec_compatible_with   = ["@platforms//os:linux", "@platforms//cpu:x86_64"],
+    target_compatible_with = ["@platforms//os:linux", "@platforms//cpu:x86_64"],
+    toolchain              = ":minio_linux_amd64_impl",
+)
+
+minio_toolchain(
+    name    = "minio_linux_arm64_impl",
+    version = "2025-10-15",
+    server  = "@minio_2025_10_15_linux_arm64//:minio",
+    mc      = "@minio_2025_10_15_linux_arm64//:mc",
+    openssl = "@minio_2025_10_15_linux_arm64//:openssl",
+    libs    = "@minio_2025_10_15_linux_arm64//:libs",
+)
+
+toolchain(
+    name                   = "minio_linux_arm64",
+    toolchain_type         = ":minio",
+    exec_compatible_with   = ["@platforms//os:linux", "@platforms//cpu:arm64"],
+    target_compatible_with = ["@platforms//os:linux", "@platforms//cpu:arm64"],
+    toolchain              = ":minio_linux_arm64_impl",
+)
+
+minio_toolchain(
+    name    = "minio_darwin_amd64_impl",
+    version = "2025-10-15",
+    server  = "@minio_2025_10_15_darwin_amd64//:minio",
+    mc      = "@minio_2025_10_15_darwin_amd64//:mc",
+    openssl = "@minio_2025_10_15_darwin_amd64//:openssl",
+    libs    = "@minio_2025_10_15_darwin_amd64//:libs",
+)
+
+toolchain(
+    name                   = "minio_darwin_amd64",
+    toolchain_type         = ":minio",
+    exec_compatible_with   = ["@platforms//os:osx", "@platforms//cpu:x86_64"],
+    target_compatible_with = ["@platforms//os:osx", "@platforms//cpu:x86_64"],
+    toolchain              = ":minio_darwin_amd64_impl",
+)
+
+minio_toolchain(
+    name    = "minio_darwin_arm64_impl",
+    version = "2025-10-15",
+    server  = "@minio_2025_10_15_darwin_arm64//:minio",
+    mc      = "@minio_2025_10_15_darwin_arm64//:mc",
+    openssl = "@minio_2025_10_15_darwin_arm64//:openssl",
+    libs    = "@minio_2025_10_15_darwin_arm64//:libs",
+)
+
+toolchain(
+    name                   = "minio_darwin_arm64",
+    toolchain_type         = ":minio",
+    exec_compatible_with   = ["@platforms//os:osx", "@platforms//cpu:arm64"],
+    target_compatible_with = ["@platforms//os:osx", "@platforms//cpu:arm64"],
+    toolchain              = ":minio_darwin_arm64_impl",
+)
+
+bzl_library(
+    name = "toolchain",
+    srcs = ["toolchain.bzl"],
+    deps = ["//private:providers"],
+)

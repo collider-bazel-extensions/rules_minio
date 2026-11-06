@@ -1,0 +1,22 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-tmp",
+      "Status": "Enabled",
+      "Filter": {"Prefix": "tmp/"},
+      "Expiration": {"Days": 7}
+    },
+    {
+      "ID": "old-versions",
+      "Status": "Enabled",
+      "Filter": {"Prefix": ""},
+      "NoncurrentVersionExpiration": {"NoncurrentDays": 30}
+    },
+    {
+      "ID": "to-warm",
+      "Status": "Enabled",
+      "Filter": {"Prefix": "archive/"},
+      "Transition": {"Days": 90, "StorageClass": "WARM"}
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+"""Private build files for rules_minio. Public surface lives in
+//:defs.bzl, which re-exports from here."""
+
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "conda_versions.bzl",
+    "health_check.sh.tmpl",
+    "image.py",
+    "install.sh.tmpl",
+    "launcher.py",
+    "minio_test_trampoline.sh",
+    "server.sh.tmpl",
+    "testlib.sh",
+    "versions.bzl",
+])
+
+bzl_library(name = "providers", srcs = ["providers.bzl"])
+
+bzl_library(name = "versions", srcs = ["versions.bzl"])
+
+bzl_library(name = "conda_versions", srcs = ["conda_versions.bzl"])
+
+bzl_library(name = "repositories", srcs = ["repositories.bzl"], deps = [":conda_versions"])
+
+bzl_library(name = "policy", srcs = ["policy.bzl"], deps = [":providers"])
+
+bzl_library(name = "server", srcs = ["server.bzl"], deps = [":providers"])
+
+bzl_library(name = "test", srcs = ["test.bzl"], deps = [":server"])
+
+bzl_library(name = "image", srcs = ["image.bzl"], deps = [":versions"])
+
+bzl_library(
+    name = "install",
+    srcs = ["install.bzl"],
+    deps = [":providers", ":server", ":versions"],
+)

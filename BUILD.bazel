@@ -1,0 +1,37 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files([
+    "MODULE.bazel",
+    "defs.bzl",
+    "extensions.bzl",
+])
+
+# The MinIO image for kind_cluster(images = ...): see //image.
+alias(
+    name = "image",
+    actual = "//image:minio_linux_amd64",
+)
+
+bzl_library(
+    name = "defs",
+    srcs = ["defs.bzl"],
+    deps = [
+        "//private:image",
+        "//private:install",
+        "//private:policy",
+        "//private:providers",
+        "//private:server",
+        "//private:test",
+    ],
+)
+
+bzl_library(
+    name = "extensions",
+    srcs = ["extensions.bzl"],
+    deps = [
+        "//private:repositories",
+        "//private:versions",
+    ],
+)

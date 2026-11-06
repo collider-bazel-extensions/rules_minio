@@ -1,0 +1,100 @@
+"""Full E2E install smoke for minio_install.
+
+Composition (3-link itest dep chain):
+  kind_svc (image preloaded) → minio_install_svc → smoke_test
+
+Installs into namespace `storage` (not the default `minio`, to check
+`namespace` is honoured) with buckets, an IAM policy and user, a bucket
+policy and lifecycle rules, then checks them in the pod, through the
+Service from other pods, and that a second install keeps credentials and
+data.
+"""
+
+load("@rules_itest//:itest.bzl", "itest_service", "service_test")
+load("@rules_kind//:defs.bzl", "kind_cluster", "kind_health_check")
+load("@rules_shell//shell:sh_binary.bzl", "sh_binary")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load("//:defs.bzl", "minio_install", "minio_install_health_check")
+
+kind_cluster(
+    name = "cluster",
+    images = ["//:image"],
+    k8s_version = "1.35",
+)
+
+kind_health_check(
+    name = "cluster_health",
+    cluster = ":cluster",
+)
+
+itest_service(
+    name = "kind_svc",
+    exe = ":cluster",
+    health_check = ":cluster_health",
+    # Let rules_kind finish `kind delete` itself instead of leaving it to
+    # its reaper after the test (rules_itest's default is 1s).
+    shutdown_timeout = "300s",
+    tags = ["manual"],
+)
+
+minio_install(
+    name = "minio_install_bin",
+    bucket_policies = ["//tests/testdata:public_downloads"],
+    buckets = [
+        "data",
+        "downloads",
+        "vault",
+    ],
+    lifecycle = {"//tests/testdata:expire_tmp": "data"},
+    namespace = "storage",
+    object_lock = ["vault"],
+    policies = ["//tests/testdata:policies"],
+    tags = ["manual"],
+    users = {"alice": "read_data"},
+    versioned = ["data"],
+)
+
+minio_install_health_check(
+    name = "minio_health_bin",
+    namespace = "storage",
+    tags = ["manual"],
+)
+
+sh_binary(
+    name = "minio_install_wrapper",
+    srcs = ["install_wrapper.sh"],
+    data = [":minio_install_bin"],
+)
+
+sh_binary(
+    name = "minio_health_wrapper",
+    srcs = ["health_wrapper.sh"],
+    data = [":minio_health_bin"],
+)
+
+itest_service(
+    name = "minio_install_svc",
+    exe = ":minio_install_wrapper",
+    health_check = ":minio_health_wrapper",
+    deps = [":kind_svc"],
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "smoke_test_bin",
+    srcs = ["smoke_test.sh"],
+    # The install again, for the idempotency check.
+    data = [":minio_install_bin"],
+    tags = ["manual"],
+)
+
+service_test(
+    name = "smoke_test",
+    services = [":minio_install_svc"],
+    test = ":smoke_test_bin",
+    tags = [
+        "manual",
+        "no-sandbox",
+        "requires-network",
+    ],
+)

@@ -1,0 +1,400 @@
+"""In-tree tests for rules_minio (no container runtime needed; the
+cluster install smoke lives in tests/install_smoke)."""
+
+load("@rules_itest//:itest.bzl", "itest_service", "service_test")
+load("@rules_shell//shell:sh_test.bzl", "sh_test")
+load(
+    "//:defs.bzl",
+    "minio_health_check",
+    "minio_install",
+    "minio_install_health_check",
+    "minio_server",
+    "minio_test",
+)
+load(":analysis_tests.bzl", "analysis_test_suite")
+
+_SEED = {"//tests/testdata:seed": "data"}
+
+# ---- build-time checks ---------------------------------------------------------
+
+# The validation action, run directly on good and bad documents.
+sh_test(
+    name = "check_test",
+    srcs = ["check_test.sh"],
+    args = [
+        "$(rootpath //private:launcher.py)",
+        "$(rootpaths //toolchain:current)",
+    ],
+    data = [
+        "//private:launcher.py",
+        "//toolchain:current",
+        "//tests/testdata:documents",
+    ],
+)
+
+# ---- hermetic server -------------------------------------------------------------
+
+minio_test(
+    name = "api_test",
+    srcs = ["api_test.sh"],
+    args = [
+        "one",
+        "'two words'",
+    ],
+    bucket_policies = ["//tests/testdata:public_downloads"],
+    buckets = [
+        "data",
+        "downloads",
+        "logs",
+        "uploads",
+        "vault",
+    ],
+    lifecycle = {"//tests/testdata:expire_tmp": "logs"},
+    object_lock = ["vault"],
+    policies = ["//tests/testdata:policies"],
+    region = "eu-west-2",
+    seed = {
+        "//tests/testdata:seed/hello.txt": "data",
+        "//tests/testdata:seed": "data/fixtures",
+    },
+    users = {
+        "alice": "read_data",
+        "bob_ops": "write_uploads",
+    },
+    versioned = ["logs"],
+)
+
+minio_test(
+    name = "events_test",
+    srcs = ["events_test.sh"],
+    buckets = [
+        "data",
+        "other",
+    ],
+    events = {"data": "put,delete"},
+    seed = _SEED,
+)
+
+minio_test(
+    name = "drives_test",
+    srcs = ["drives_test.sh"],
+    buckets = ["data"],
+    drives = 4,
+)
+
+# ---- TLS --------------------------------------------------------------------------
+
+minio_test(
+    name = "tls_test",
+    srcs = ["tls_test.sh"],
+    args = ["generated"],
+    buckets = ["data"],
+    seed = _SEED,
+    tls = True,
+)
+
+genrule(
+    name = "certs",
+    srcs = ["//toolchain:current"],
+    outs = [
+        "certs/ca.crt",
+        "certs/server.crt",
+        "certs/server.key",
+    ],
+    cmd = "$(location make_certs.sh) $$(echo $(locations //toolchain:current) | tr ' ' '\\n' | grep '/bin/openssl$$') $(RULEDIR)/certs",
+    tools = ["make_certs.sh"],
+)
+
+minio_test(
+    name = "tls_provided_test",
+    srcs = ["tls_test.sh"],
+    args = ["provided"],
+    buckets = ["data"],
+    seed = _SEED,
+    tls = True,
+    tls_ca = ":certs/ca.crt",
+    tls_cert = ":certs/server.crt",
+    tls_key = ":certs/server.key",
+)
+
+# ---- restarts (minio_stop / minio_start) ------------------------------------------
+
+minio_test(
+    name = "restart_test",
+    srcs = ["restart_test.sh"],
+    buckets = ["data"],
+    users = {"alice": "readonly"},
+)
+
+minio_test(
+    name = "restart_failure_test",
+    srcs = ["restart_failure_test.sh"],
+    buckets = ["data"],
+)
+
+# ---- the trampoline watches the server --------------------------------------------
+
+minio_test(
+    name = "server_dies",
+    srcs = ["dies.sh"],
+    tags = ["manual"],
+)
+
+minio_test(
+    name = "exit3",
+    srcs = ["exit3.sh"],
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "server_died_test",
+    srcs = ["server_died_test.sh"],
+    args = [
+        "$(rootpath //private:minio_test_trampoline.sh)",
+        "$(rootpath //private:testlib.sh)",
+        "$(rootpath :server_dies_minio)",
+        "$(rootpath :server_dies_inner)",
+        "$(rootpath :exit3_minio)",
+        "$(rootpath :exit3_inner)",
+    ],
+    data = [
+        ":exit3_inner",
+        ":exit3_minio",
+        ":server_dies_inner",
+        ":server_dies_minio",
+        "//private:minio_test_trampoline.sh",
+        "//private:testlib.sh",
+    ],
+)
+
+# ---- minio_server run directly ------------------------------------------------------
+
+minio_server(
+    name = "test_server",
+    buckets = ["data"],
+    extra_args = ["--quiet"],
+    root_password = "app-secret-123",
+    root_user = "app-admin",
+    server_env = {"MINIO_API_REQUESTS_MAX": "7"},
+    tags = ["manual"],
+)
+
+minio_health_check(
+    name = "test_server_health",
+    server = ":test_server",
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "server_test",
+    srcs = ["server_test.sh"],
+    args = ["$(rootpath :test_server)"],
+    data = [":test_server"],
+)
+
+sh_test(
+    name = "health_check_test",
+    srcs = ["health_check_test.sh"],
+    args = ["$(rootpath :test_server_health)"],
+    data = [":test_server_health"],
+)
+
+minio_server(
+    name = "bad_flag_server",
+    extra_args = ["--no-such-option"],
+    tags = ["manual"],
+)
+
+# The bucket policy is for `downloads`, which isn't created.
+minio_server(
+    name = "bad_provision_server",
+    bucket_policies = ["//tests/testdata:public_downloads"],
+    buckets = ["data"],
+    tags = ["manual"],
+)
+
+minio_server(
+    name = "slow_server",
+    ready_timeout = "0.001",
+    tags = ["manual"],
+)
+
+minio_test(
+    name = "failing_minio_test",
+    srcs = ["never_runs.sh"],
+    extra_args = ["--no-such-option"],
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "server_failure_test",
+    srcs = ["server_failure_test.sh"],
+    args = [
+        "$(rootpath :bad_flag_server)",
+        "$(rootpath :bad_provision_server)",
+        "$(rootpath :slow_server)",
+        # failing_minio_test's trampoline, run with the arguments its
+        # sh_test would pass (a test target's args don't apply as data).
+        "$(rootpath //private:minio_test_trampoline.sh)",
+        "$(rootpath :failing_minio_test_minio)",
+        "$(rootpath :failing_minio_test_inner)",
+        "$(rootpath //private:testlib.sh)",
+    ],
+    data = [
+        ":bad_flag_server",
+        ":bad_provision_server",
+        ":failing_minio_test_inner",
+        ":failing_minio_test_minio",
+        ":slow_server",
+        "//private:minio_test_trampoline.sh",
+        "//private:testlib.sh",
+    ],
+)
+
+minio_test(
+    name = "record_port",
+    srcs = ["record_port.sh"],
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "server_cleanup_test",
+    srcs = ["server_cleanup_test.sh"],
+    args = [
+        "$(rootpath //private:minio_test_trampoline.sh)",
+        "$(rootpath :record_port_minio)",
+        "$(rootpath :record_port_inner)",
+        "$(rootpath //private:testlib.sh)",
+    ],
+    data = [
+        ":record_port_inner",
+        ":record_port_minio",
+        "//private:minio_test_trampoline.sh",
+        "//private:testlib.sh",
+    ],
+)
+
+# minio_server as a rules_itest service.
+minio_server(
+    name = "itest_server",
+    buckets = ["data"],
+    seed = _SEED,
+    tags = ["manual"],
+)
+
+minio_health_check(
+    name = "itest_server_health",
+    server = ":itest_server",
+    tags = ["manual"],
+)
+
+itest_service(
+    name = "minio_svc",
+    exe = ":itest_server",
+    health_check = ":itest_server_health",
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "itest_test_bin",
+    srcs = ["itest_test.sh"],
+    tags = ["manual"],
+)
+
+service_test(
+    name = "itest_test",
+    services = [":minio_svc"],
+    test = ":itest_test_bin",
+)
+
+# ---- cluster install manifests and image -------------------------------------------
+
+minio_install(
+    name = "default_install",
+    tags = ["manual"],
+)
+
+minio_install(
+    name = "stored_install",
+    image = "registry.example/minio:1",
+    region = "eu-central-1",
+    storage = "5Gi",
+    tags = ["manual"],
+)
+
+filegroup(
+    name = "default_install_manifest",
+    srcs = [":default_install"],
+    output_group = "manifest",
+)
+
+filegroup(
+    name = "stored_install_manifest",
+    srcs = [":stored_install"],
+    output_group = "manifest",
+)
+
+minio_install_health_check(
+    name = "install_health",
+    tags = ["manual"],
+)
+
+sh_test(
+    name = "install_manifest_test",
+    srcs = ["install_manifest_test.sh"],
+    args = [
+        "$(rootpath :default_install_manifest)",
+        "$(rootpath :stored_install_manifest)",
+    ],
+    data = [
+        ":default_install_manifest",
+        ":stored_install_manifest",
+    ],
+)
+
+sh_test(
+    name = "image_test",
+    srcs = ["image_test.sh"],
+    args = [
+        "$(rootpath //image:minio_linux_amd64)",
+        "$(rootpath //private:image.py)",
+        "$(rootpath @minio_2025_10_15_linux_amd64//:minio)",
+        "$(rootpath @minio_2025_10_15_linux_amd64//:mc)",
+        "$(rootpath @minio_loader_linux_amd64//:loader)",
+    ],
+    data = [
+        "//image:minio_linux_amd64",
+        "//private:image.py",
+        "@minio_2025_10_15_linux_amd64//:mc",
+        "@minio_2025_10_15_linux_amd64//:minio",
+        "@minio_loader_linux_amd64//:loader",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+        "@platforms//cpu:x86_64",
+    ],
+)
+
+# ---- pins ----------------------------------------------------------------------------
+
+sh_test(
+    name = "checksums_test",
+    srcs = ["checksums_test.sh"],
+    data = ["//private:conda_versions.bzl"],
+)
+
+sh_test(
+    name = "version_test",
+    srcs = ["version_test.sh"],
+    args = ["$(rootpaths //toolchain:current)"],
+    data = [
+        "//:MODULE.bazel",
+        "//image:BUILD.bazel",
+        "//private:conda_versions.bzl",
+        "//private:versions.bzl",
+        "//toolchain:BUILD.bazel",
+        "//toolchain:current",
+    ],
+)
+
+analysis_test_suite(name = "analysis_tests")

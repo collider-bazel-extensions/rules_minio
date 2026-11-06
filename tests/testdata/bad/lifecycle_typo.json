@@ -1,0 +1,1 @@
+{"Rules": [{"ID": "x", "Status": "Enabled", "Filter": {"Prefix": "tmp/"}, "Expiraton": {"Days": 7}}]}

@@ -1,0 +1,26 @@
+# MinIO images from the pinned binaries, for kind_cluster(images = [...]) or
+# `docker load` / `podman load`. linux_arm64 has no 2025-10-15 server build
+# on conda-forge: building that image fails, saying so.
+load("//private:image.bzl", "minio_image")
+
+package(default_visibility = ["//visibility:public"])
+
+exports_files(["BUILD.bazel"])
+
+minio_image(
+    name = "minio_linux_amd64",
+    arch = "amd64",
+    loader = "@minio_loader_linux_amd64//:loader",
+    loader_dest = "lib64/ld-linux-x86-64.so.2",
+    mc = "@minio_2025_10_15_linux_amd64//:mc",
+    minio = "@minio_2025_10_15_linux_amd64//:minio",
+)
+
+minio_image(
+    name = "minio_linux_arm64",
+    arch = "arm64",
+    loader = "@minio_loader_linux_arm64//:loader",
+    loader_dest = "lib/ld-linux-aarch64.so.1",
+    mc = "@minio_2025_10_15_linux_arm64//:mc",
+    minio = "@minio_2025_10_15_linux_arm64//:minio",
+)

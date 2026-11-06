@@ -1,0 +1,43 @@
+load("//:defs.bzl", "minio_lifecycle", "minio_policy")
+
+package(default_visibility = ["//tests:__subpackages__"])
+
+exports_files(glob(["**/*.json", "**/*.txt"]))
+
+minio_policy(
+    name = "policies",
+    srcs = [
+        "policies/read_data.json",
+        "policies/write_uploads.json",
+    ],
+)
+
+minio_policy(
+    name = "public_downloads",
+    srcs = ["bucket_policies/public_downloads.json"],
+    type = "bucket",
+)
+
+minio_lifecycle(
+    name = "expire_tmp",
+    src = "lifecycle/expire_tmp.json",
+)
+
+filegroup(
+    name = "seed",
+    srcs = glob(["seed/**"]),
+)
+
+# For the by-hand / CI check that a bad policy fails `bazel build`;
+# manual, so `//...` skips it.
+minio_policy(
+    name = "typo_policy",
+    srcs = ["bad/typo_condition.json"],
+    tags = ["manual"],
+)
+
+# Every document, good and bad, for //tests:check_test.
+filegroup(
+    name = "documents",
+    srcs = glob(["**/*.json"]),
+)
