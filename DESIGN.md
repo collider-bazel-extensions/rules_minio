@@ -41,7 +41,10 @@ MinIO's policy parser (and its lifecycle parser) ignore unknown JSON keys. A mis
    - the drives under `<state>/data`: one directory, or `drive{1...N}` (MinIO's ellipsis) for one erasure set;
    - `--certs-dir <state>/certs`, always. Without it MinIO reads `~/.minio/certs`. Under TLS that dir holds `public.crt`, `private.key` and `CAs/`;
    - the environment: the caller's, minus every `MINIO_*`, `MC_*` and `AWS_*` variable (a sourced env file sets them), plus root credentials, `MINIO_SITE_REGION`, `MINIO_UPDATE=off`, `HOME=<state>`, the webhook target and `server_env`.
-3. **Readiness:** `GET /minio/health/ready` returns 200 (over TLS with the test CA). MinIO prints its startup banner slightly *after* this, so nothing reads the port from its log.
+3. **Readiness:** `GET /minio/health/ready` returns 200 (over TLS with the test CA). Two caveats:
+   - With several drives on a slow machine (CI), it can answer a moment before the object layer is up, and requests then fail with `Server not initialized yet`. Every `mc` call (here and in the install) retries that error for up to 30 s.
+   - MinIO binds the console port only *after* the API is ready, and exits if a parallel test took that port meanwhile. So readiness also waits for the console port to accept connections. A clash then happens before "ready", and the start is retried with new ports.
+   - MinIO prints its startup banner slightly *after* this, so nothing reads the port from its log.
 4. **Provisioning** through `mc --json` with its own `--config-dir` (the test CA under `certs/CAs/`). The order:
    - buckets: `mb --with-lock` for object lock (which implies versioning), `version enable`;
    - IAM policies;

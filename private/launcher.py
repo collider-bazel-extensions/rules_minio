@@ -242,11 +242,23 @@ class Server:
         return f"{'https' if self.tls_ca else 'http'}://127.0.0.1:{self.port}"
 
     def ready(self):
+        """The API is ready, and the console listens: MinIO binds the
+        console after the API is up, and exits if its port was taken
+        meanwhile, so a start isn't done before both (and a clash is
+        retried by launch)."""
         ctx = ssl.create_default_context(cafile=self.tls_ca) if self.tls_ca else None
         try:
             with urllib.request.urlopen(self.endpoint + _READY_PATH, timeout=1, context=ctx) as r:
-                return r.status == 200
+                if r.status != 200:
+                    return False
         except (OSError, urllib.error.URLError, ssl.SSLError):
+            return False
+        if self.env.get("MINIO_BROWSER") == "off":
+            return True
+        try:
+            socket.create_connection(("127.0.0.1", self.console_port), timeout=1).close()
+            return True
+        except OSError:
             return False
 
     def start(self, deadline, append=False):
@@ -397,11 +409,29 @@ class Mc:
 
     def run(self, *argv, stdin=None, what=None):
         """Run `mc --json ARGV`; raise Failed with mc's message."""
-        r = subprocess.run([self.binary, "--config-dir", self.config_dir, "--json", "--no-color"]
-                           + list(argv), input=stdin, capture_output=True, text=True, env=self.env)
+        def once():
+            return subprocess.run([self.binary, "--config-dir", self.config_dir, "--json", "--no-color"]
+                                  + list(argv), input=stdin, capture_output=True, text=True, env=self.env)
+        r = retry_uninitialized(once)
         if r.returncode == 0:
             return r.stdout
         raise Failed(f"{what or 'mc ' + ' '.join(argv[:3])}: {mc_error(r.stdout + r.stderr)}")
+
+
+# /minio/health/ready can answer 200 a moment before the object layer is
+# up (seen with several drives on a slow machine); requests then fail with
+# this. Retried, for up to _INIT_WAIT seconds.
+_UNINITIALIZED = "Server not initialized yet"
+_INIT_WAIT = 30
+
+
+def retry_uninitialized(run):
+    deadline = time.monotonic() + _INIT_WAIT
+    while True:
+        r = run()
+        if r.returncode == 0 or _UNINITIALIZED not in r.stdout + r.stderr or time.monotonic() >= deadline:
+            return r
+        time.sleep(0.2)
 
 
 def mc_error(out):
@@ -972,9 +1002,10 @@ class Kubectl:
         return r
 
     def mc(self, *argv, stdin=None, what=None):
-        r = self.run("exec", "-i" if stdin is not None else "-t=false", "deploy/minio", "-c", "minio",
-                     "--", "/usr/bin/mc", "--config-dir", "/tmp/.mc", "--json", "--no-color", *argv,
-                     stdin=stdin, check=False)
+        r = retry_uninitialized(lambda: self.run(
+            "exec", "-i" if stdin is not None else "-t=false", "deploy/minio", "-c", "minio",
+            "--", "/usr/bin/mc", "--config-dir", "/tmp/.mc", "--json", "--no-color", *argv,
+            stdin=stdin, check=False))
         if r.returncode != 0:
             raise Failed(f"{what or 'mc ' + ' '.join(argv[:3])}: {mc_error(r.stdout + r.stderr)}")
         return r.stdout
