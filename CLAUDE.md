@@ -59,7 +59,8 @@ rules_minio/
 - **Strict keys first.** MinIO drops unknown policy / lifecycle keys silently (a misspelled `Condition` widens a policy). `launcher.py check` refuses them with a suggestion, then a throwaway MinIO loads the documents (`mc --json`; the cause message is MinIO's).
 - **Transitions** need a remote tier: key-checked, then taken out before MinIO loads lifecycle rules (build check and server).
 - **Isolation.** The server gets the caller's environment minus `MINIO_*`, `MC_*`, `AWS_*`, plus its own; always `--certs-dir` (else `~/.minio/certs`); `mc` always `--config-dir` (the `MC` wrapper on PATH bakes it in).
-- **Readiness.** `/minio/health/ready` 200, then provisioning (events last, so seeding sends none), then the env file. MinIO prints its banner after it is ready: don't parse ports from its log.
+- **Several drives** set `MINIO_CI_CD=on`: erasure mode refuses drives on the root filesystem (where GitHub runners' sandboxes are; locally the test tree is usually on another mount, so it passes anyway).
+- **Readiness.** `/minio/health/ready` 200, then provisioning (events last, so seeding sends none), then the env file. The ready endpoint can answer before the object layer is up (several drives, slow CI): `mc` calls retry `Server not initialized yet` for 30 s (`retry_uninitialized`). Readiness also waits for the console port to accept connections: MinIO binds it after the API and dies if it was taken, which must happen before "ready" so `launch` retries with new ports. MinIO prints its banner after it is ready: don't parse ports from its log.
 - **Install provisioning** goes through `kubectl exec deploy/minio -- mc` (no shell or tar in the image). `mc anonymous set-json` can't read a pipe, so documents are first written into the pod's /tmp with `mc pipe <path>`. Credentials must be URL-safe (`MC_HOST_local` via `$(VAR)` expansion). The marker ConfigMap `minio-provisioned` is deleted at the start of an install and written at the end.
 - **Watching.** The trampoline backgrounds the test and polls both pids (bash 3.2); if the server dies first, it kills the test's process tree (`pgrep -P`) and fails with the status and `$MINIO_LOG` tail.
 
@@ -100,7 +101,7 @@ To find stray servers, use `pgrep -x minio` (an exact process name), never `pkil
 ### Test results (last full run: 2026-11-06)
 
 All 46 test targets pass on Linux x86_64 (MinIO RELEASE.2025-10-15T17-29-55Z): 45 in `//tests/...` (27 of them analysis tests) and the kind smoke on rootless podman. Other checks:
-- `//tests/...` passed 3 runs of every test in parallel with network blocked in the sandbox (`--sandbox_default_allow_network=false`), with no stray `minio` left.
+- `//tests/...` passed with network blocked in the sandbox (`--sandbox_default_allow_network=false`), and 10 runs of every test in parallel (450 runs), with no stray `minio` left.
 - `bazel build //tests/testdata:typo_policy` fails, naming the misspelled `Conditon` (CI checks it).
 - The image loads into podman and kind, and runs under the default SELinux labels.
 
