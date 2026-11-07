@@ -5,6 +5,8 @@ Policies (build time):
                          refused (MinIO silently drops them), then MinIO
                          itself loads them, as a validation action.
   minio_lifecycle      — a bucket lifecycle configuration, checked the same way.
+  minio_policy_test / minio_lifecycle_test — the same checks at test time,
+                         expecting a given error (or none).
 
 Hermetic server (test time):
   minio_server         — long-running MinIO with buckets, policies, users,
@@ -25,7 +27,9 @@ load("//private:install.bzl",
      _minio_install_health_check = "minio_install_health_check")
 load("//private:policy.bzl",
      _minio_lifecycle = "minio_lifecycle",
-     _minio_policy = "minio_policy")
+     _minio_lifecycle_test = "minio_lifecycle_test",
+     _minio_policy = "minio_policy",
+     _minio_policy_test = "minio_policy_test")
 load("//private:providers.bzl",
      _MinioBinaryInfo = "MinioBinaryInfo",
      _MinioLifecycleInfo = "MinioLifecycleInfo",
@@ -39,6 +43,8 @@ load("//private:versions.bzl", _DEFAULT_IMAGE = "DEFAULT_IMAGE")
 
 minio_policy = _minio_policy
 minio_lifecycle = _minio_lifecycle
+minio_policy_test = _minio_policy_test
+minio_lifecycle_test = _minio_lifecycle_test
 minio_server = _minio_server
 minio_health_check = _minio_health_check
 minio_test = _minio_test

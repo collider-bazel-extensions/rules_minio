@@ -7,6 +7,8 @@ Three families in one repo:
                              field check (typos MinIO silently drops), then
                              MinIO itself loads them, as a validation action
     minio_lifecycle        — bucket lifecycle configuration, checked the same way
+    minio_policy_test / minio_lifecycle_test — the checks at test time,
+                             expecting a given error (or none)
 
   Hermetic server (test time):
     minio_server           — long-running MinIO on a free port, with buckets,
@@ -26,7 +28,7 @@ Pinned: MinIO RELEASE.2025-10-15T17-29-55Z, mc RELEASE.2025-08-13T08-35-41Z
 
 module(
     name = "rules_minio",
-    version = "0.1.0",
+    version = "0.2.0",
 )
 
 bazel_dep(name = "bazel_skylib", version = "1.8.2")
