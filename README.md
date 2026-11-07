@@ -5,6 +5,7 @@ Bazel rules for [MinIO](https://github.com/minio/minio), the S3-compatible objec
 - **Policies (build time)**
   - `minio_policy` — IAM or bucket policy documents. Unknown keys fail the build (MinIO silently drops them), then MinIO itself loads every document as a validation action, so its own errors fail `bazel build`.
   - `minio_lifecycle` — a bucket lifecycle configuration, checked the same way.
+  - `minio_policy_test` / `minio_lifecycle_test` — the same checks at test time, expecting a given error (or none).
 - **Hermetic server (test time)**
   - `minio_server` — a long-running MinIO on a free port with your buckets (versioned, object-locked), IAM policies, users, bucket policies, lifecycle rules, seed objects and event notifications in place. It writes `$TEST_TMPDIR/<name>.env` once ready, including the standard `AWS_*` variables, so S3 SDKs work unchanged. It can serve TLS, use several drives (erasure coding), and be stopped and started again mid-test.
   - `minio_health_check` — pairs with `minio_server` for `itest_service`.
@@ -21,11 +22,11 @@ No host `minio` or `mc` needed. The binaries come from pinned, SHA-256-verified 
 ## Install (Bzlmod)
 
 ```python
-bazel_dep(name = "rules_minio", version = "0.1.0")
+bazel_dep(name = "rules_minio", version = "0.2.0")
 git_override(
     module_name = "rules_minio",
     remote = "https://github.com/collider-bazel-extensions/rules_minio",
-    tag = "v0.1.0",
+    tag = "v0.2.0",
 )
 ```
 
@@ -85,6 +86,30 @@ minio_lifecycle(
   This catches what JSON schemas don't: unknown actions, malformed resources, condition keys that don't apply to an action, a bucket policy without a `Principal`. A bucket policy must name exactly one bucket in its `Resource`.
 - **Transitions:** lifecycle `Transition` / `NoncurrentVersionTransition` rules need a remote tier. They are key-checked but not loaded, at build time and on the hermetic server (whose log notes it).
 - **Cost and network:** one MinIO start per target, about 0.5 s. Everything runs on 127.0.0.1, so `--sandbox_default_allow_network=false` works.
+
+### `minio_policy_test` / `minio_lifecycle_test`
+
+A failing build can't be asserted from inside `bazel test`. These run the same check as a test instead, to pin down that a mistake you care about is caught:
+
+```python
+load("@rules_minio//:defs.bzl", "minio_lifecycle_test", "minio_policy_test")
+
+minio_policy_test(
+    name = "typo_is_caught_test",
+    srcs = ["testdata/typo.json"],
+    expect_error = "testdata/typo\\.json: Statement\\[0\\]\\.Resorce: unknown field",   # extended regex
+)
+
+minio_lifecycle_test(
+    name = "lifecycle_typo_test",
+    src = "testdata/lifecycle_typo.json",
+    expect_error = "Expiraton: unknown field",
+)
+```
+
+- **Pass/fail:** each passes if the check fails with output matching `expect_error`, or, with no `expect_error`, if the check passes. The check's output is printed either way.
+- **`minio_policy_test`** takes `type` (`"iam"` or `"bucket"`) as `minio_policy` does.
+- **What it matches:** the same messages as the build, from the strict key check or from MinIO.
 
 ## Hermetic server
 

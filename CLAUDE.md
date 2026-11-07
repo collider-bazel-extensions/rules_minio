@@ -25,7 +25,7 @@ rules_minio/
 │   ├── versions.bzl          # DEFAULT_VERSION, PLATFORMS, DEFAULT_IMAGE
 │   ├── repositories.bzl      # binary repo (.conda merge; MISSING → failing stubs); loader repo
 │   ├── providers.bzl         # MinioBinaryInfo, MinioPolicyInfo, MinioLifecycleInfo
-│   ├── policy.bzl            # minio_policy, minio_lifecycle (+ validation action)
+│   ├── policy.bzl            # minio_policy, minio_lifecycle (+ validation action); *_test variants
 │   ├── launcher.py           # check, serve, manifest, install, install-health
 │   ├── server.bzl            # minio_server, minio_health_check, MinioServerInfo, attribute checks
 │   ├── server.sh.tmpl        # runfiles resolution (into variables) → launcher.py serve
@@ -43,6 +43,7 @@ rules_minio/
     ├── analysis_tests.bzl    # providers, executables, validation outputs, every attribute check
     ├── testdata/             # policies (IAM, bucket), lifecycle, bad documents, seed files
     ├── check_test.sh         # validation action: good docs pass; typos, MinIO errors, JSON errors named
+    ├── policy_test_failure_test.sh  # minio_policy_test fails on each wrong expectation
     ├── api_test.sh           # env, buckets/versioning/lock, users get exactly their policies, bucket
     │                         # policy, lifecycle (transition left out), seed paths, SigV4 from AWS_*, helpers
     ├── events_test.sh, drives_test.sh, tls_test.sh (+ make_certs.sh genrule)
@@ -70,6 +71,8 @@ rules_minio/
 load("@rules_minio//:defs.bzl",
     "minio_policy",                # srcs, type ("iam" | "bucket")
     "minio_lifecycle",             # src
+    "minio_policy_test",           # srcs, type, expect_error (regex; empty: expect a pass)
+    "minio_lifecycle_test",        # src, expect_error
     "minio_server",                # buckets, versioned, object_lock, policies, users, bucket_policies,
                                    # lifecycle, seed, events, root_user, root_password, region, drives,
                                    # tls, tls_cert/key/ca, server_env, ready_timeout, extra_args
@@ -100,14 +103,16 @@ To find stray servers, use `pgrep -x minio` (an exact process name), never `pkil
 
 ### Test results (last full run: 2026-11-06)
 
-All 46 test targets pass on Linux x86_64 (MinIO RELEASE.2025-10-15T17-29-55Z): 45 in `//tests/...` (27 of them analysis tests) and the kind smoke on rootless podman. Other checks:
-- `//tests/...` passed with network blocked in the sandbox (`--sandbox_default_allow_network=false`), and 10 runs of every test in parallel (450 runs), with no stray `minio` left.
+All 53 test targets pass on Linux x86_64 (MinIO RELEASE.2025-10-15T17-29-55Z): 52 in `//tests/...` (27 of them analysis tests) and the kind smoke on rootless podman. Other checks:
+- `//tests/...` passed with network blocked in the sandbox (`--sandbox_default_allow_network=false`), and 10 runs of every test in parallel (450 runs, before the 7 policy-test targets were added), with no stray `minio` left.
 - `bazel build //tests/testdata:typo_policy` fails, naming the misspelled `Conditon` (CI checks it).
 - The image loads into podman and kind, and runs under the default SELinux labels.
 
 | Test target | What it verifies | Result |
 |---|---|---|
 | `//tests:check_test` | good IAM, bucket and lifecycle documents pass; unknown keys (with suggestion), MinIO's errors (action, resource, Principal, Status) and JSON errors fail, each file named | PASSED |
+| `//tests:typo_resource_test`, `unknown_action_test`, `bucket_policy_principal_test`, `lifecycle_typo_test`, `good_policies_test`, `good_lifecycle_test` | minio_policy_test / minio_lifecycle_test: refusals matched (file and key named), good documents accepted | PASSED |
+| `//tests:policy_test_failure_test` | a policy test fails on a non-matching error, on a refusal without expect_error, and on a pass with one | PASSED |
 | `//tests:api_test` | env (AWS_*, region, mc on PATH), buckets, versioning, object lock, seed paths, users get exactly their policies, anonymous reads via the bucket policy, lifecycle rules (transition left out), a SigV4 client from AWS_* alone, wait/empty helpers, args | PASSED |
 | `//tests:events_test` | put and delete notifications recorded (key decoded), not gets, other buckets or the seed; wait timeout message | PASSED |
 | `//tests:drives_test` | 4 drives online, an object on all 4 | PASSED |

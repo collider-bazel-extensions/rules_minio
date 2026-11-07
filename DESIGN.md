@@ -117,5 +117,6 @@ Provisioning needs the server running, so it can't be part of `kubectl apply`. `
 
 - `//tests/...` needs no container runtime.
 - Most tests are `minio_test`s against real servers. `check_test` runs the validation action directly on good and bad documents, and the analysis tests cover the attribute checks.
+- `minio_policy_test` / `minio_lifecycle_test` (#2) run the same `launcher.py check` at test time, so consumers can pin a refusal without calling the private launcher. Their script works the same way as rules_kyverno's `kyverno_policy_test`: an extended-regex `expect_error`, or none to expect a pass. `policy_test_failure_test` checks that each wrong expectation fails.
 - The failure modes have their own tests: a server that can't start, failing provisioning (server stopped), a readiness timeout, a server dying mid-test, cleanup at the end of a test, and restarts with a held port.
 - `tests/install_smoke` is the only test needing Docker or podman. It runs kind with the image loaded, then the install, then checks from other pods, then a second install.

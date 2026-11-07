@@ -8,6 +8,8 @@ load(
     "minio_health_check",
     "minio_install",
     "minio_install_health_check",
+    "minio_lifecycle_test",
+    "minio_policy_test",
     "minio_server",
     "minio_test",
 )
@@ -29,6 +31,72 @@ sh_test(
         "//private:launcher.py",
         "//toolchain:current",
         "//tests/testdata:documents",
+    ],
+)
+
+# The same checks as tests: each refusal pinned by its message (#2).
+minio_policy_test(
+    name = "typo_resource_test",
+    srcs = ["//tests/testdata:bad/typo_resource.json"],
+    expect_error = "tests/testdata/bad/typo_resource\\.json: Statement\\[0\\]\\.Resorce: unknown field \\(did you mean 'Resource'\\?\\)",
+)
+
+minio_policy_test(
+    name = "unknown_action_test",
+    srcs = ["//tests/testdata:bad/unknown_action.json"],
+    expect_error = "MinIO refused it: unsupported action 's3:GetObjects'",
+)
+
+minio_policy_test(
+    name = "bucket_policy_principal_test",
+    srcs = ["//tests/testdata:bad/no_principal.json"],
+    expect_error = "no_principal\\.json: MinIO refused it: invalid Principal",
+    type = "bucket",
+)
+
+minio_policy_test(
+    name = "good_policies_test",
+    srcs = [
+        "//tests/testdata:policies/read_data.json",
+        "//tests/testdata:policies/write_uploads.json",
+    ],
+)
+
+minio_lifecycle_test(
+    name = "lifecycle_typo_test",
+    src = "//tests/testdata:bad/lifecycle_typo.json",
+    expect_error = "Rules\\[0\\]\\.Expiraton: unknown field \\(did you mean 'Expiration'\\?\\)",
+)
+
+minio_lifecycle_test(
+    name = "good_lifecycle_test",
+    src = "//tests/testdata:lifecycle/expire_tmp.json",
+)
+
+# Each wrong expectation fails the test; policy_test_failure_test runs them.
+[minio_policy_test(
+    name = name,
+    srcs = [src],
+    expect_error = expect,
+    tags = ["manual"],
+) for name, src, expect in [
+    ("wrong_message", "//tests/testdata:bad/typo_resource.json", "Conditon"),
+    ("unexpected_refusal", "//tests/testdata:bad/typo_resource.json", ""),
+    ("unexpected_pass", "//tests/testdata:policies/read_data.json", "unknown field"),
+]]
+
+sh_test(
+    name = "policy_test_failure_test",
+    srcs = ["policy_test_failure_test.sh"],
+    args = [
+        "$(rootpath :wrong_message)",
+        "$(rootpath :unexpected_refusal)",
+        "$(rootpath :unexpected_pass)",
+    ],
+    data = [
+        ":unexpected_pass",
+        ":unexpected_refusal",
+        ":wrong_message",
     ],
 )
 

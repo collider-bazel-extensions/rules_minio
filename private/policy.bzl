@@ -112,3 +112,91 @@ minio_lifecycle = rule(
     },
     toolchains = [_TOOLCHAIN],
 )
+
+# ---- minio_policy_test / minio_lifecycle_test ----------------------------------------
+
+def _shell_quote(s):
+    return "'" + s.replace("'", "'\\''") + "'"
+
+_TEST_SCRIPT = """\
+#!/usr/bin/env bash
+# {rule}: the {kind} check, expected to {want}.
+set -uo pipefail
+out=$(python3 {launcher} check --minio {minio} --mc {mc} --type {kind} --label {label} \\
+      --marker "$TEST_TMPDIR/marker" {files} 2>&1)
+rc=$?
+printf '%s\\n' "$out"
+expect={expect}
+if [[ -z "$expect" ]]; then
+  [[ $rc == 0 ]] || {{ echo "FAIL: the check refused {names}" >&2; exit 1; }}
+  echo "PASS: the check accepted {names}"
+  exit 0
+fi
+[[ $rc != 0 ]] || {{ echo "FAIL: the check accepted {names}; expected an error matching: $expect" >&2; exit 1; }}
+grep -Eq -- "$expect" <<<"$out" || {{ echo "FAIL: the error does not match: $expect" >&2; exit 1; }}
+echo "PASS: refused as expected ($expect)"
+"""
+
+def _check_test(ctx, rule_name, kind, files):
+    mn = ctx.toolchains[_TOOLCHAIN].minio
+    script = ctx.actions.declare_file(ctx.label.name + ".sh")
+    ctx.actions.write(script, _TEST_SCRIPT.format(
+        rule = rule_name,
+        kind = kind,
+        want = "fail matching " + ctx.attr.expect_error if ctx.attr.expect_error else "pass",
+        launcher = _shell_quote(ctx.file._launcher.short_path),
+        minio = _shell_quote(mn.server.short_path),
+        mc = _shell_quote(mn.mc.short_path),
+        label = _shell_quote(label_text(ctx.label)),
+        files = " ".join([_shell_quote(f.short_path) for f in files]),
+        expect = _shell_quote(ctx.attr.expect_error),
+        names = " ".join([f.basename for f in files]),
+    ), is_executable = True)
+    return [DefaultInfo(executable = script, runfiles = ctx.runfiles(
+        files = files + [ctx.file._launcher],
+        transitive_files = mn.files,
+    ))]
+
+_EXPECT_ERROR = attr.string(
+    doc = "Extended regex the check's output must match, e.g. " +
+          "`Statement\\\\[0\\\\]\\\\.Resorce: unknown field`. Empty: expect the check to pass.",
+)
+
+def _minio_policy_test_impl(ctx):
+    if ctx.attr.type not in ("iam", "bucket"):
+        fail("{}: type = {}: want \"iam\" or \"bucket\".".format(ctx.label, repr(ctx.attr.type)))
+    return _check_test(ctx, "minio_policy_test", ctx.attr.type, ctx.files.srcs)
+
+minio_policy_test = rule(
+    implementation = _minio_policy_test_impl,
+    test = True,
+    doc = "Runs minio_policy's check on documents at test time: passes if the " +
+          "check fails with a message matching `expect_error` (or, with no " +
+          "`expect_error`, if it passes). Pins down that a mistake is caught.",
+    attrs = {
+        "srcs": attr.label_list(mandatory = True, allow_empty = False, allow_files = [".json"],
+                                doc = "Policy documents."),
+        "type": attr.string(default = "iam", doc = "\"iam\" or \"bucket\", as for minio_policy."),
+        "expect_error": _EXPECT_ERROR,
+        "_launcher": attr.label(default = "//private:launcher.py", allow_single_file = True),
+    },
+    toolchains = [_TOOLCHAIN],
+)
+
+def _minio_lifecycle_test_impl(ctx):
+    return _check_test(ctx, "minio_lifecycle_test", "lifecycle", [ctx.file.src])
+
+minio_lifecycle_test = rule(
+    implementation = _minio_lifecycle_test_impl,
+    test = True,
+    doc = "Runs minio_lifecycle's check on a configuration at test time: passes " +
+          "if the check fails with a message matching `expect_error` (or, with " +
+          "no `expect_error`, if it passes).",
+    attrs = {
+        "src": attr.label(mandatory = True, allow_single_file = [".json"],
+                          doc = "The lifecycle configuration."),
+        "expect_error": _EXPECT_ERROR,
+        "_launcher": attr.label(default = "//private:launcher.py", allow_single_file = True),
+    },
+    toolchains = [_TOOLCHAIN],
+)
