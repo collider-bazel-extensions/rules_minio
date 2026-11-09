@@ -35,9 +35,9 @@ To pin by archive and integrity instead of a git tag, replace the `git_override`
 ```python
 archive_override(
     module_name = "rules_minio",
-    urls = ["https://github.com/collider-bazel-extensions/rules_minio/archive/refs/tags/v0.2.0.tar.gz"],
-    strip_prefix = "rules_minio-0.2.0",
-    integrity = "sha256-m/HarT1oR05PyF1qMTahUNPoq6D/SeQnLw54yXcmgVE=",
+    urls = ["https://github.com/collider-bazel-extensions/rules_minio/archive/refs/tags/v0.2.1.tar.gz"],
+    strip_prefix = "rules_minio-0.2.1",
+    integrity = "sha256-XP0ERXWS9MbStP0l+IKwD0nNi4aR98QA2+0qE/lWo4w=",
 )
 ```
 
