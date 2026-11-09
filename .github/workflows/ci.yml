@@ -8,6 +8,22 @@ on:
   workflow_dispatch:
 
 jobs:
+  consumer:
+    # The commit's release archive (git archive honours .gitattributes
+    # export-ignore, as GitHub's tag tarballs do) must load with //... for a
+    # consumer.
+    name: consumer (ubuntu-latest, git archive)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bazel-contrib/setup-bazel@0.15.0
+        with:
+          bazelisk-cache: true
+          repository-cache: true
+
+      - name: bazel query @rules_minio//... from the archive
+        run: .github/consumer/check.sh "$RUNNER_TEMP/consumer"
+
   hermetic:
     # minio_policy / minio_lifecycle checks, the hermetic server /
     # minio_test suite, install manifests, the image, analysis tests and the

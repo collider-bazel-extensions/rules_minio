@@ -1,0 +1,5 @@
+# Keep the release archive loadable for consumers: tests/ loads dev-only
+# modules (rules_itest, rules_kind), which a consumer can't see, so
+# `bazel query @rules_minio//...` would fail on it. GitHub's tag tarballs
+# honour export-ignore. (A git_override clone still has it.)
+tests/ export-ignore
