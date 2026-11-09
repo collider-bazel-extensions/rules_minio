@@ -138,3 +138,7 @@ All 53 test targets pass on Linux x86_64 (MinIO RELEASE.2025-10-15T17-29-55Z): 5
 - Lifecycle transitions aren't loaded anywhere (no remote tier).
 - The install is one replica; seed objects and event notifications are test-time only.
 - `minio_test` wraps `sh_test`; other languages use `minio_server` through rules_itest.
+
+## Release archive
+
+`.gitattributes` export-ignores `tests/`, so it may load dev-only modules; nothing else may. CI's `consumer` job checks that `@rules_minio//...` loads from the commit's `git archive` (`.github/consumer/check.sh`).

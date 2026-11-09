@@ -120,3 +120,7 @@ Provisioning needs the server running, so it can't be part of `kubectl apply`. `
 - `minio_policy_test` / `minio_lifecycle_test` (#2) run the same `launcher.py check` at test time, so consumers can pin a refusal without calling the private launcher. Their script works the same way as rules_kyverno's `kyverno_policy_test`: an extended-regex `expect_error`, or none to expect a pass. `policy_test_failure_test` checks that each wrong expectation fails.
 - The failure modes have their own tests: a server that can't start, failing provisioning (server stopped), a readiness timeout, a server dying mid-test, cleanup at the end of a test, and restarts with a held port.
 - `tests/install_smoke` is the only test needing Docker or podman. It runs kind with the image loaded, then the install, then checks from other pods, then a second install.
+
+## Release archive contents (v0.2.1)
+
+`tests/` is `export-ignore` (`.gitattributes`): its packages load the dev-only `rules_itest` and `rules_kind`, which made `@rules_minio//...` unloadable for consumers. GitHub's tag tarballs honour it; a `git_override` clone still contains it. `REPO.bazel` `ignore_directories` isn't used because it would also hide it from this repo's own `bazel test`. `tools/` has no BUILD files and still ships. CI's `consumer` job (`.github/consumer/check.sh`) queries `//...` from the commit's `git archive`. Same fix as rules_kubectl#5 / rules_atlas#12.

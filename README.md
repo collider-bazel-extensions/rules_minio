@@ -22,11 +22,11 @@ No host `minio` or `mc` needed. The binaries come from pinned, SHA-256-verified 
 ## Install (Bzlmod)
 
 ```python
-bazel_dep(name = "rules_minio", version = "0.2.0")
+bazel_dep(name = "rules_minio", version = "0.2.1")
 git_override(
     module_name = "rules_minio",
     remote = "https://github.com/collider-bazel-extensions/rules_minio",
-    tag = "v0.2.0",
+    tag = "v0.2.1",
 )
 ```
 
@@ -42,6 +42,8 @@ archive_override(
 ```
 
 That's all: rules_minio registers its toolchains and fetches the binaries only for the platform a build needs. The `minio` extension honours only the root module's `minio.version(version = "2025-10-15")` tag (the `mod.is_root` guard used across this organization) and uses that version without one.
+
+The release archive (the tag tarball) leaves out `tests/`, whose packages load dev-only modules (`rules_itest`, `rules_kind`), so `bazel query @rules_minio//...` works for consumers (since v0.2.1). A `git_override` clone still contains it; name packages instead (for example `@rules_minio//:all`).
 
 **Platforms:** linux_amd64, darwin_amd64 and darwin_arm64. conda-forge has no linux_arm64 build of the 2025-10-15 server, so on linux_arm64 the binaries' targets fail with that message.
 
